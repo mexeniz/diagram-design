@@ -1077,23 +1077,22 @@ def diagram_css_from_html(html: str, root_id: str, original_root_id: str = "", s
 
 def leading_accessibility_end(svg: str, pos: int) -> int:
     """Keep leading title/desc and comments ahead of a newly inserted defs."""
-    token = re.compile(r"<!--.*?-->|<title\b[^>]*>|<desc\b[^>]*>", re.DOTALL | re.IGNORECASE)
-    while True:
-        start = re.match(r"\s*", svg[pos:])
-        assert start is not None
-        next_pos = pos + start.end()
-        opening = token.match(svg, next_pos)
-        if opening is None:
-            return pos
-        if opening.group(0).startswith("<!--"):
+    token = re.compile(r"\s*(<!--.*?-->|<title\b[^>]*>|<desc\b[^>]*>)", re.DOTALL | re.IGNORECASE)
+    # Every pass moves `pos` past a whole comment or a closed title/desc, so
+    # the scan ends after at most len(svg) passes. On a stop, `pos` stays
+    # before the whitespace that precedes whatever comes next.
+    while (opening := token.match(svg, pos)) is not None:
+        tag = opening.group(1)
+        if tag.startswith("<!--"):
             pos = opening.end()
             continue
-        name = "title" if opening.group(0).lower().startswith("<title") else "desc"
+        name = "title" if tag.lower().startswith("<title") else "desc"
         endings = re.compile(rf"<!--.*?-->|<!\[CDATA\[.*?\]\]>|</{name}\s*>", re.DOTALL | re.IGNORECASE)
         close = next((match for match in endings.finditer(svg, opening.end()) if match.group(0).startswith("</")), None)
         if close is None:
-            return pos
+            break
         pos = close.end()
+    return pos
 
 
 def merge_style_into_defs(svg: str, style_css: str, system_fonts: bool = False) -> str:
