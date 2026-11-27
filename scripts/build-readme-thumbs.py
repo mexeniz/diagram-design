@@ -71,11 +71,15 @@ def sha256(path: pathlib.Path) -> str:
     return digest.hexdigest()
 
 
-def decoded_size(payload: bytes) -> tuple[int, int]:
-    """Return the pixel dimensions of `payload`, raising if it will not decode."""
+def decoded_size(payload: bytes, fmt: str) -> tuple[int, int]:
+    """Return the pixel dimensions of `payload`, raising if it will not decode.
+
+    Only the `fmt` decoder may run: Pillow otherwise sniffs content, so a
+    README "PNG" that is really a TIFF, PSD or EPS would reach those decoders.
+    """
     from PIL import Image
 
-    with Image.open(io.BytesIO(payload)) as handle:
+    with Image.open(io.BytesIO(payload), formats=[fmt]) as handle:
         handle.load()
         return handle.size
 
@@ -84,7 +88,7 @@ def render(source: pathlib.Path, width: int, quality: int) -> bytes:
     """Return the WebP bytes of `source` downscaled to `width`."""
     from PIL import Image
 
-    with Image.open(source) as handle:
+    with Image.open(source, formats=["PNG"]) as handle:
         image = handle.convert("RGB")
         height = round(image.height * width / image.width)
         image = image.resize((width, height), Image.LANCZOS)
@@ -97,7 +101,7 @@ def render(source: pathlib.Path, width: int, quality: int) -> bytes:
 def spec_for(source: pathlib.Path) -> dict[str, object]:
     """Return the part of a manifest record fixed by `source` and its settings."""
     width, quality = target(source.name)
-    source_width, source_height = decoded_size(source.read_bytes())
+    source_width, source_height = decoded_size(source.read_bytes(), "PNG")
     return {
         "thumb": f"{source.stem}.webp",
         "source": source.relative_to(REPO).as_posix(),
@@ -242,7 +246,7 @@ def main(argv: list[str]) -> int:
             destination.write_bytes(payload)
 
         try:
-            thumb_width, thumb_height = decoded_size(payload)
+            thumb_width, thumb_height = decoded_size(payload, "WEBP")
         except OSError:
             stale.append(f"{destination.name} (does not decode)")
             continue
